@@ -1,0 +1,85 @@
+# This workflow automatically creates a GitHub release when the default TAG in the Makefile is updated on main.
+# 99% of the time, from an UpdateCLI PR that bumps the TAG while tracking upstream.
+name: Release On Tag Update
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Makefile'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Calculate release tag from Makefile defaults
+        run: |
+          TAG=$(make -s log | grep '^TAG=' | cut -d '=' -f2)
+          BUILD_META=$(make -s log | grep '^BUILD_META=' | cut -d '=' -f2)
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "BUILD_META=${BUILD_META}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${TAG}${BUILD_META}" >> "$GITHUB_ENV"
+
+      - name: Validate TAG change and release uniqueness
+        id: validate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHOULD_RELEASE=true
+
+          if [[ "${{ github.event_name }}" == "push" ]] && [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            PREV_TAG=$(git show "${{ github.event.before }}:Makefile" 2>/dev/null | sed -n 's/^TAG := \(.*\)\$(BUILD_META)$/\1/p' | head -n1)
+            if [[ -n "$PREV_TAG" ]] && [[ "$PREV_TAG" == "$TAG" ]]; then
+              echo "Makefile changed, but default TAG did not change ($TAG); skipping release"
+              SHOULD_RELEASE=false
+            fi
+          fi
+
+          EXISTING_TAG=$(gh release list --limit 200 --json tagName --jq '.[].tagName' | awk -v t="$TAG" 'index($0, t "-build") == 1 {suffix = substr($0, length(t) + 7); if (length(suffix) == 8 && suffix ~ /^[0-9]+$/) {print; exit}}')
+          if [[ -n "$EXISTING_TAG" ]]; then
+            echo "Release for upstream TAG $TAG already exists as $EXISTING_TAG; skipping release"
+            SHOULD_RELEASE=false
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; skipping"
+            SHOULD_RELEASE=false
+          fi
+
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Read app secrets
+        if: steps.validate.outputs.should_release == 'true'
+        uses: rancher-eio/read-vault-secrets@0da85151ad1f19ed7986c41587e45aac1ace74b6 # v3
+        with:
+          secrets: |
+            secret/data/github/repo/${{ github.repository }}/github/rancher-release-team-auto-tagger/app-credentials appId | APP_ID ;
+            secret/data/github/repo/${{ github.repository }}/github/rancher-release-team-auto-tagger/app-credentials privateKey | PRIVATE_KEY
+
+      - name: Generate GitHub App token
+        if: steps.validate.outputs.should_release == 'true'
+        id: generate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.PRIVATE_KEY }}
+
+      - name: Create GitHub release if missing
+        if: steps.validate.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --target main \
+            --title "$RELEASE_TAG" \
+            --generate-notes
