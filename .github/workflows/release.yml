@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
     - name: Read secrets
       if: github.repository_owner == 'rancher'
@@ -29,7 +29,7 @@ jobs:
           secret/data/github/repo/${{ github.repository }}/rancher-prime-registry/credentials password | PRIME_REGISTRY_PASSWORD
 
     - name: Build and push multi-arch hardened-csi-resizer image to Prime
-      uses: rancher/ecm-distro-tools/actions/publish-image@10ab39987d39be83da6a252c1c3b540e496e0287 # v0.66.0
+      uses: rancher/ecm-distro-tools/actions/publish-image@016551c414f82e64af8c4c18315ea3093d10be7c # v0.74.3
       with:
         image: hardened-csi-resizer
         make-target: push-image-csi-resizer
