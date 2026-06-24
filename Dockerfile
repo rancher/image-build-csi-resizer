@@ -16,7 +16,8 @@ ARG TAG
 RUN git clone --depth=1 https://${PKG}.git $GOPATH/src/${PKG}
 WORKDIR $GOPATH/src/${PKG}
 RUN git fetch --all --tags --prune
-RUN git checkout tags/${TAG} -b ${TAG}
+# Strip suffix that may be RCs
+RUN git checkout tags/${TAG%-*} -b ${TAG%-*}
 RUN go mod download
 
 # cross-compilation setup
