@@ -18,6 +18,8 @@ WORKDIR $GOPATH/src/${PKG}
 RUN git fetch --all --tags --prune
 # Strip suffix that may be RCs
 RUN git checkout tags/${TAG%-*} -b ${TAG%-*}
+COPY go-mod-overrides ./go-mod-overrides
+RUN go-mod-overrides.sh ./go-mod-overrides
 RUN go mod download
 
 # cross-compilation setup
