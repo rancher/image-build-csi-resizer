@@ -36,7 +36,6 @@ targets:
     spec:
       file: TAG
       matchpattern: '(?m)^(.+)$'
-      replacepattern: '{{ source "external-resizer" }}'
 
 scms:
   default:
